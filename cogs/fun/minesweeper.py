@@ -77,7 +77,7 @@ class Minesweeper(commands.Cog):
             height = 10
             bombs = 15
         output = ''
-        field = self.generateMinesweeper(self, width, height, bombs)
+        field = self.generateMinesweeper(width, height, bombs)
         for row in field:
             for c in row:
                 if spoil: output += '||'

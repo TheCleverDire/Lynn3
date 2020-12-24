@@ -4,9 +4,7 @@ import config
 import glob
 import logging
 
-# 1.4
-# bot = commands.Bot(command_prefix=config.get_prefix, description=config.description, allowed_mentions=discord.AllowedMentions(everyone=False))
-bot = commands.Bot(command_prefix=config.get_prefix, description=config.description)
+bot = commands.Bot(command_prefix=config.get_prefix, description=config.description, allowed_mentions=discord.AllowedMentions(everyone=False), intents=discord.Intents.all())
 
 if __name__ == '__main__':
     for extension in [f.replace('.py', '').replace('/', '.').replace('\\', '.') for f in glob.glob('cogs/**/*.py', recursive=True)]:

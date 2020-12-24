@@ -2,27 +2,29 @@ import discord
 import os
 import psycopg2
 import logging
+from config import dbConfig, useDB
 
 # $ createdb lynnDB
 
-conn = psycopg2.connect(database="lynnDB",
-                        user = "pi",
-                        password = "pass123",
-                        host = "raspberry.pi",
-                        port = "5432")
-conn.set_session(autocommit=True)
-
-cur = conn.cursor()
-
-cur.execute('''CREATE TABLE IF NOT EXISTS guilds
-            (id BIGINT PRIMARY KEY      NOT NULL,
-            disabledmodules TEXT,
-            prefix          TEXT,
-            customcommands  TEXT);''')
-
-cur.execute('''CREATE TABLE IF NOT EXISTS users
-            (id BIGINT PRIMARY KEY      NOT NULL,
-            location   TEXT);''')
+if useDB:
+    conn = psycopg2.connect(database=dbConfig['database'],
+                            user=dbConfig['user'],
+                            password=dbConfig['password'],
+                            host=dbConfig['host'],
+                            port=dbConfig['port'])
+    conn.set_session(autocommit=True)
+    
+    cur = conn.cursor()
+    
+    cur.execute('''CREATE TABLE IF NOT EXISTS guilds
+                (id BIGINT PRIMARY KEY      NOT NULL,
+                disabledmodules TEXT,
+                prefix          TEXT,
+                customcommands  TEXT);''')
+    
+    cur.execute('''CREATE TABLE IF NOT EXISTS users
+                (id BIGINT PRIMARY KEY      NOT NULL,
+                location   TEXT);''')
 
 async def setUser(id, key, value):
     cur.execute('SELECT * FROM users WHERE id = %s', (id,))

@@ -10,7 +10,7 @@ class WolframAlpha(commands.Cog):
 
     @commands.command(name='wolframalpha', aliases=['wa', 'wolfram'])
     async def wolframalpha(self, ctx, *, query):
-        res = await REST(f"http://api.wolframalpha.com/v1/simple?appid={getAPIKey('wolframalpha')}&layout=labelbar&ip=None&background=2F3136&foreground=white&i={escapeURL(query)}", returns='raw|status')
+        res = await REST(f"http://api.wolframalpha.com/v1/simple?appid={getAPIKey('wolframalpha')}&layout=labelbar&ip=None&background=2F3136&foreground=white&i={escapeURL(query)}", returns=('raw', 'status'))
         data = BytesIO(res[0])
         if res[1] == 501:
             raise commands.ArgumentParsingError(data.read().decode('utf-8'))

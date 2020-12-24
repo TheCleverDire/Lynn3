@@ -6,25 +6,60 @@ import aiohttp
 import urllib
 import json
 import re
-from config import apiKeys
+import select
+import asyncio
+import typing
+import time
+from config import apiKeys, cache
+from subprocess import Popen, PIPE, STDOUT, check_output, CalledProcessError
 from PIL import Image, ImageOps
 
 async def REST(url: str, method='GET', headers=None, data=None, auth=None, returns='json'):
     async with aiohttp.ClientSession() as s:
         async with s.request(method, url, headers=headers, data=data, auth=auth) as r:
             temp = []
-            for ret in returns.split('|'):
+            if isinstance(returns, str):
+                returns = (returns,)
+            for ret in returns:
                 if ret == 'json':
                     temp.append(await r.json())
                 elif ret == 'status':
                     temp.append(r.status)
                 elif ret == 'raw':
                     temp.append(await r.read())
+                elif ret == 'text':
+                    temp.append(await r.text())
                 elif ret == 'object':
                     return r
+                else:
+                    raise NotImplementedError('Invalid return type ' + ret)
             if len(temp) == 1:
                 return temp[0]
             return temp
+
+async def getTwitchToken() -> str:
+    token = getCache('twitchToken')
+    if token:
+        authenticate = await REST('https://id.twitch.tv/oauth2/validate', headers={'Authorization': 'Bearer ' + token})
+    if not token or 'status' in authenticate:
+        # Invalid token
+        token = await REST(f"https://id.twitch.tv/oauth2/token?client_id={getAPIKey('twitchID')}&client_secret={getAPIKey('twitchSecret')}&grant_type=client_credentials", method='POST')
+        token = token['access_token']
+        setCache('twitchToken', token)
+    return token
+
+def getCache(key: str) -> str:
+    if not key in cache:
+        return None
+
+    value = cache[key]
+    cache.pop(key)
+    return value
+
+def setCache(key: str, value: str):
+    if key in cache:
+        raise Exception()
+    cache.append({key: value})
 
 def escapeURL(url: str) -> str:
     return urllib.parse.quote(url)
@@ -44,6 +79,71 @@ def isURL(string: str) -> bool:
         r'(?::\d+)?' # optional port
         r'(?:/?|[/?]\S+)$', re.IGNORECASE)
     return re.match(regex, string) is not None
+
+def codeBlockWrapper(string: str, lang: str = ''):
+    return f'```{lang}\n{string}\n```'
+
+async def sendShellMsg(ctx: commands.Context, message: discord.Message, curmsg: list):
+    if len(codeBlockWrapper('\n'.join(curmsg), 'sh')) < 2000:
+        await message.edit(content=codeBlockWrapper('\n'.join(curmsg), 'sh'))
+        return message, curmsg
+    else:
+        msgs = splitMessage('\n'.join(curmsg), 'sh')
+        await message.edit(content=msgs[0])
+        curmsg = curmsg[-1]
+        for msg in msgs[1:]:
+            message = await ctx.send(msg)
+        return message, curmsg
+
+async def shellCommand(ctx: commands.Context, command: typing.Union[str, tuple, list], realtime: bool = False, timeout: int = 10, verbose: bool = False):
+
+    curmsg = ['⏳']
+    message = await ctx.send(codeBlockWrapper('\n'.join(curmsg), 'sh'))
+
+    curmsg = []
+
+    if realtime:
+        if type(command) == str:
+            p = Popen(command, stdout=PIPE, stderr=STDOUT, shell=True)
+        else:
+            p = Popen(command, stdout=PIPE, stderr=STDOUT)
+        if verbose:
+            curmsg = [f'$ {command}', f'[PID] {p.pid}']
+        startTime = time.time()
+        lastEdit = time.time()
+        out = p.stdout
+        while True:
+            r, _, _ = select.select([out], [], [], 0.5)
+            if p.poll() != None:
+                break
+            if out in r:
+                line = os.read(out.fileno(), 4096)
+                if isinstance(line, bytes):
+                    curmsg.append(line.decode().strip())
+                else:
+                    curmsg.append(str(line))
+                if time.time()-lastEdit > 1 and realtime:
+                    message, curmsg = await sendShellMsg(ctx, message, curmsg)
+                    lastEdit = time.time()
+
+            if timeout and time.time()-startTime > timeout:
+                curmsg.append('[SIGKILLED AFTER 10 SECONDS]')
+                message, curmsg = await sendShellMsg(ctx, message, curmsg)
+                p.kill()
+                p.wait()
+                break
+    else:
+        try:
+            if type(command) == str:
+                curmsg.append(check_output(command, stderr=STDOUT, shell=True, timeout=timeout).decode('utf-8'))
+            else:
+                curmsg.append(check_output(command, stderr=STDOUT, timeout=timeout).decode('utf-8'))
+        except CalledProcessError as e:
+            curmsg.append(e.output.decode('utf-8'))
+
+    if verbose and realtime:
+        curmsg.append(f'[RET] {p.returncode}')
+    await sendShellMsg(ctx, message, curmsg)
 
 async def makeBodyPart(img, img2, p, s, o11, o12, o21, o22):
     size = (p*s[0], p*s[1], p*s[2], p*s[3])

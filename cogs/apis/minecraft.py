@@ -14,26 +14,6 @@ class Minecraft(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
 
-    # Ported to python from
-    # https://gist.github.com/jomo/be7dbb5228187edbb993
-    async def getMinecraftAge(self, name):
-        a = 1263146630 # notch sign-up
-        b = math.floor(datetime.utcnow().timestamp())
-        last = 0
-        for _ in range(30):
-            if a == b:
-                if last == a-1 and await REST(f"https://api.mojang.com/users/profiles/minecraft/{name}?at={str(a)}", returns='status') == 200:
-                    return datetime.utcfromtimestamp(a)
-                else:
-                    return False
-            else:
-                mid = a + math.floor((b - a) / 2)
-                if await REST(f"https://api.mojang.com/users/profiles/minecraft/{name}?at={str(mid)}", returns='status')  == 200:
-                    b = mid
-                else:
-                    a = mid+1
-                    last = mid
-
     # thanks stackoverflow love ya
     # https://stackoverflow.com/a/13756038
     def td_format(self, td_object):
@@ -128,11 +108,11 @@ class Minecraft(commands.Cog):
         return byte
 
     async def getMinecraftUUID(self, name):
-        r = await REST(f"https://api.mojang.com/users/profiles/minecraft/{name}", returns='raw|status')
+        r = await REST(f"https://api.mojang.com/users/profiles/minecraft/{name}", returns=('raw', 'status'))
         if r[1] == 200:
             return json.loads(r[0])
 
-        r = await REST(f"https://api.mojang.com/users/profiles/minecraft/{name}?at=0", returns='raw|status')
+        r = await REST(f"https://api.mojang.com/users/profiles/minecraft/{name}?at=0", returns=('raw', 'status'))
         if r[1] == 200:
             return json.loads(r[0])
         return None
@@ -152,7 +132,6 @@ class Minecraft(commands.Cog):
             raise commands.UserInputError()
 
     @minecraft.command(name='player', aliases=['players', 'user', 'username'])
-    @commands.cooldown(rate=1, per=10)
     async def minecraftAPI(self, ctx, *, user):
         """Searches minecraft players."""
         uuid = await self.getMinecraftUUID(user)
@@ -167,14 +146,14 @@ class Minecraft(commands.Cog):
             names[i] = names[i].replace('*', '\\*').replace('_', '\\_').replace('~', '\\~')
         names.reverse()
         names[0] += ' **[CURRENT]**'
-        created = await self.getMinecraftAge(user)
         skin = await self.getMinecraftSkinUrl(uuid['id'])
         if not skin:
             raise commands.CommandOnCooldown(commands.BucketType.default, 10)
         embed = discord.Embed(title='Minecraft User', colour=0x82540f)
-        embed.set_author(name=user, icon_url='attachment://head.png')
-        embed.add_field(name='Name history', value='\n'.join(names))
-        embed.add_field(name='UUID', value=uuid['id'])
+        embed.set_author(name=user)
+        embed.set_thumbnail(url='attachment://head.png')
+        embed.add_field(name='Name history', value='\n'.join(names), inline=False)
+        embed.add_field(name='UUID', value=uuid['id'], inline=False)
         try:
             embed.add_field(name='Skin URL', value='[Click me]('+skin['textures']['SKIN']['url']+')')
             await skinRenderer2D(skin['textures']['SKIN']['url'])
@@ -187,10 +166,6 @@ class Minecraft(commands.Cog):
             await headRenderer('https://gamepedia.cursecdn.com/minecraft_gamepedia/3/37/Steve_skin.png')
             skinFile = discord.File('skins/2d/Steve_skin.png', filename='skin.png')
             headFile = discord.File('skins/head/Steve_skin.png', filename='head.png')
-        if created:
-            embed.add_field(name='Account created', value=f"On {created.strftime('%c')}\n{self.td_format(datetime.utcnow() - created)} ago")
-        else:
-            embed.add_field(name='Account created', value='???')
         embed.set_footer(text='\U00002063', icon_url='https://minecraft.net/favicon-96x96.png')
         embed.set_image(url='attachment://skin.png')
         embed.timestamp = datetime.utcnow()
@@ -225,17 +200,16 @@ class Minecraft(commands.Cog):
         embed = discord.Embed(title='Minecraft', colour=0xa4d168)
         embed.add_field(name='Sold total', value=sale['total'])
         embed.add_field(name='Sold in the last 24h', value=sale['last24h'])
-        embed.add_field(name='Sold every minute', value=str(float(sale['saleVelocityPerSeconds'])*60))
-        embed.set_footer(text='\U00002063', icon_url='https://minecraft.net/favicon-96x96.png')
+        embed.add_field(name='Sold per hour', value=str(float(sale['saleVelocityPerSeconds'])*60*60))
+        embed.set_footer(text='\U00002063', icon_url='https://static.wikia.nocookie.net/minecraft_gamepedia/images/3/3b/Grass_Block_(side_texture)_JE2_BE2.png')
         embed.timestamp = datetime.utcnow()
         
         sale = await REST('https://api.mojang.com/orders/statistics', method='POST', data='{"metricKeys":["item_sold_dungeons"]}', headers={"content-type": "application/json"})
         embed2 = discord.Embed(title='Minecraft Dungeons', colour=0xe57834)
         embed2.add_field(name='Sold total', value=sale['total'])
         embed2.add_field(name='Sold in the last 24h', value=sale['last24h'])
-        embed2.add_field(name='Sold every minute', value=str(float(sale['saleVelocityPerSeconds'])*60))
-        # TODO: Minecraft dungeons favicon
-        embed2.set_footer(text='\U00002063', icon_url='https://minecraft.net/favicon-96x96.png')
+        embed2.add_field(name='Sold per hour', value=str(float(sale['saleVelocityPerSeconds'])*60*60))
+        embed2.set_footer(text='\U00002063', icon_url='https://i.imgur.com/EkLm2j8.png')
         embed2.timestamp = datetime.utcnow()
 
         await ctx.send(embed=embed)
@@ -336,14 +310,10 @@ class Minecraft(commands.Cog):
 
     @classicube.command(name='player', aliases=['players', 'user', 'username'])
     async def classiCubeAPI(self, ctx, *, user):
-        """Searches ClassiCube players.
-        user = ID or name"""
+        """Searches ClassiCube players."""
         data = await REST(f"https://www.classicube.net/api/player/{escapeURL(user)}")
         if not data or data['error'] != '':
-            if user.isdigit():
-                data = await REST(f"https://www.classicube.net/api/id/{escapeURL(user)}")
-            if not data or data['error'] != '':
-                raise commands.BadArgument(message='User not found')
+                raise commands.BadArgument(message=data['error'] if data and data['error'] else 'User not found')
         
         flagName = {
             'b': 'Banned from forums',
@@ -358,8 +328,8 @@ class Minecraft(commands.Cog):
         
         flags = data['flags']
         embed = discord.Embed(title='ClassiCube User', colour=0x977dab)
-        embed.set_author(name=data['username'],
-            icon_url='attachment://head.png')
+        embed.set_author(name=data['username'])
+        embed.set_thumbnail(url='attachment://head.png')
         embed.add_field(name='ID', value=data['id'])
         ago = self.td_format(datetime.utcnow() - datetime.utcfromtimestamp(data['registered']))
         
@@ -396,9 +366,6 @@ class Minecraft(commands.Cog):
         """Gets ClassiCube stats"""
         data = await REST('https://www.classicube.net/api/players/')
         playercount = data['playercount']
-        players = ''
-        for p in data['lastfive']:
-            players += str(p) + '\n'
         data = await REST('https://www.classicube.net/api/servers/')
         serverlist = []
         servers = ''
@@ -413,7 +380,6 @@ class Minecraft(commands.Cog):
         serverlist.append(servers)
         embed = discord.Embed(title='ClassiCube', colour=0x977dab)
         embed.add_field(name='Total Accounts', value=playercount)
-        embed.add_field(name='Last five accounts', value=players)
         for i in range(len(serverlist)):
             embed.add_field(name=(f"({str(i+1)}/{str(len(serverlist))})" if len(serverlist) != 1 else '') + 'Servers with players\nClick the server names to join!', value=serverlist[i], inline=False)
 

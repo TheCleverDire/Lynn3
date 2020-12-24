@@ -14,6 +14,11 @@ class EmoteFix(commands.Cog):
     async def on_message(self, message):
         if message.author.bot:
             return
+
+        ctx = await self.bot.get_context(message)
+        if ctx.command:
+            return
+
         replaced = []
         shouldSend = False
         newmsg = message.content
